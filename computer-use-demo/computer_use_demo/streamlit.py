@@ -5,13 +5,12 @@ Entrypoint for streamlit, see https://docs.streamlit.io/
 import asyncio
 import base64
 import os
-import subprocess
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import StrEnum
 from functools import partial
-from pathlib import PosixPath
+from pathlib import Path
 from typing import cast
 
 import httpx
@@ -24,14 +23,10 @@ from anthropic.types.beta import (
 )
 from streamlit.delta_generator import DeltaGenerator
 
-from computer_use_demo.loop import (
-    PROVIDER_TO_DEFAULT_MODEL_NAME,
-    APIProvider,
-    sampling_loop,
-)
+from computer_use_demo.loop import sampling_loop
 from computer_use_demo.tools import ToolResult
 
-CONFIG_DIR = PosixPath("~/.anthropic").expanduser()
+CONFIG_DIR = Path.home() / ".anthropic"
 API_KEY_FILE = CONFIG_DIR / "api_key"
 STREAMLIT_STYLE = """
 <style>
@@ -55,6 +50,7 @@ WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive account
 INTERRUPT_TEXT = "(user stopped or interrupted and wrote the following)"
 INTERRUPT_TOOL_ERROR = "human stopped or interrupted tool execution"
 
+DEFAULT_MODEL = "claude-3-5-sonnet-20241022"
 
 class Sender(StrEnum):
     USER = "user"
@@ -70,14 +66,8 @@ def setup_state():
         st.session_state.api_key = load_from_storage("api_key") or os.getenv(
             "ANTHROPIC_API_KEY", ""
         )
-    if "provider" not in st.session_state:
-        st.session_state.provider = (
-            os.getenv("API_PROVIDER", "anthropic") or APIProvider.ANTHROPIC
-        )
-    if "provider_radio" not in st.session_state:
-        st.session_state.provider_radio = st.session_state.provider
     if "model" not in st.session_state:
-        _reset_model()
+        st.session_state.model = DEFAULT_MODEL
     if "auth_validated" not in st.session_state:
         st.session_state.auth_validated = False
     if "responses" not in st.session_state:
@@ -94,12 +84,6 @@ def setup_state():
         st.session_state.in_sampling_loop = False
 
 
-def _reset_model():
-    st.session_state.model = PROVIDER_TO_DEFAULT_MODEL_NAME[
-        cast(APIProvider, st.session_state.provider)
-    ]
-
-
 async def main():
     """Render loop for streamlit"""
     setup_state()
@@ -112,31 +96,13 @@ async def main():
         st.warning(WARNING_TEXT)
 
     with st.sidebar:
-
-        def _reset_api_provider():
-            if st.session_state.provider_radio != st.session_state.provider:
-                _reset_model()
-                st.session_state.provider = st.session_state.provider_radio
-                st.session_state.auth_validated = False
-
-        provider_options = [option.value for option in APIProvider]
-        st.radio(
-            "API Provider",
-            options=provider_options,
-            key="provider_radio",
-            format_func=lambda x: x.title(),
-            on_change=_reset_api_provider,
-        )
-
         st.text_input("Model", key="model")
-
-        if st.session_state.provider == APIProvider.ANTHROPIC:
-            st.text_input(
-                "Anthropic API Key",
-                type="password",
-                key="api_key",
-                on_change=lambda: save_to_storage("api_key", st.session_state.api_key),
-            )
+        st.text_input(
+            "Anthropic API Key",
+            type="password",
+            key="api_key",
+            on_change=lambda: save_to_storage("api_key", st.session_state.api_key),
+        )
 
         st.number_input(
             "Only send N most recent images",
@@ -155,22 +121,14 @@ async def main():
         st.checkbox("Hide screenshots", key="hide_images")
 
         if st.button("Reset", type="primary"):
-            with st.spinner("Resetting..."):
-                st.session_state.clear()
-                setup_state()
-
-                subprocess.run("pkill Xvfb; pkill tint2", shell=True)  # noqa: ASYNC221
-                await asyncio.sleep(1)
-                subprocess.run("./start_all.sh", shell=True)  # noqa: ASYNC221
+            st.session_state.clear()
+            setup_state()
 
     if not st.session_state.auth_validated:
-        if auth_error := validate_auth(
-            st.session_state.provider, st.session_state.api_key
-        ):
-            st.warning(f"Please resolve the following auth issue:\n\n{auth_error}")
+        if not st.session_state.api_key:
+            st.warning("Enter your Anthropic API key in the sidebar to continue.")
             return
-        else:
-            st.session_state.auth_validated = True
+        st.session_state.auth_validated = True
 
     chat, http_logs = st.tabs(["Chat", "HTTP Exchange Logs"])
     new_message = st.chat_input(
@@ -227,7 +185,6 @@ async def main():
             st.session_state.messages = await sampling_loop(
                 system_prompt_suffix=st.session_state.custom_system_prompt,
                 model=st.session_state.model,
-                provider=st.session_state.provider,
                 messages=st.session_state.messages,
                 output_callback=partial(_render_message, Sender.BOT),
                 tool_output_callback=partial(
@@ -272,29 +229,6 @@ def track_sampling_loop():
     st.session_state.in_sampling_loop = True
     yield
     st.session_state.in_sampling_loop = False
-
-
-def validate_auth(provider: APIProvider, api_key: str | None):
-    if provider == APIProvider.ANTHROPIC:
-        if not api_key:
-            return "Enter your Anthropic API key in the sidebar to continue."
-    if provider == APIProvider.BEDROCK:
-        import boto3
-
-        if not boto3.Session().get_credentials():
-            return "You must have AWS credentials set up to use the Bedrock API."
-    if provider == APIProvider.VERTEX:
-        import google.auth
-        from google.auth.exceptions import DefaultCredentialsError
-
-        if not os.environ.get("CLOUD_ML_REGION"):
-            return "Set the CLOUD_ML_REGION environment variable to use the Vertex API."
-        try:
-            google.auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-        except DefaultCredentialsError:
-            return "Your google cloud credentials are not set up correctly."
 
 
 def load_from_storage(filename: str) -> str | None:
