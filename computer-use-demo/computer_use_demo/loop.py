@@ -11,8 +11,6 @@ from typing import Any, cast
 import httpx
 from anthropic import (
     Anthropic,
-    AnthropicBedrock,
-    AnthropicVertex,
     APIError,
     APIResponseValidationError,
     APIStatusError,
@@ -33,19 +31,6 @@ from .tools import BashTool, ComputerTool, EditTool, ToolCollection, ToolResult
 
 COMPUTER_USE_BETA_FLAG = "computer-use-2024-10-22"
 PROMPT_CACHING_BETA_FLAG = "prompt-caching-2024-07-31"
-
-
-class APIProvider(StrEnum):
-    ANTHROPIC = "anthropic"
-    BEDROCK = "bedrock"
-    VERTEX = "vertex"
-
-
-PROVIDER_TO_DEFAULT_MODEL_NAME: dict[APIProvider, str] = {
-    APIProvider.ANTHROPIC: "claude-3-5-sonnet-20241022",
-    APIProvider.BEDROCK: "anthropic.claude-3-5-sonnet-20241022-v2:0",
-    APIProvider.VERTEX: "claude-3-5-sonnet-v2@20241022",
-}
 
 
 # This system prompt is optimized for the Docker environment in this repository and
@@ -73,7 +58,6 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 async def sampling_loop(
     *,
     model: str,
-    provider: APIProvider,
     system_prompt_suffix: str,
     messages: list[BetaMessageParam],
     output_callback: Callable[[BetaContentBlockParam], None],
@@ -102,13 +86,7 @@ async def sampling_loop(
         enable_prompt_caching = False
         betas = [COMPUTER_USE_BETA_FLAG]
         image_truncation_threshold = only_n_most_recent_images or 0
-        if provider == APIProvider.ANTHROPIC:
-            client = Anthropic(api_key=api_key, max_retries=4)
-            enable_prompt_caching = True
-        elif provider == APIProvider.VERTEX:
-            client = AnthropicVertex()
-        elif provider == APIProvider.BEDROCK:
-            client = AnthropicBedrock()
+        client = Anthropic(api_key=api_key, max_retries=4)
 
         if enable_prompt_caching:
             betas.append(PROMPT_CACHING_BETA_FLAG)
