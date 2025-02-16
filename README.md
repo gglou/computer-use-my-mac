@@ -8,18 +8,6 @@ To use these quickstarts, you'll need an Anthropic API key. If you don't have on
 
 ## Available Quickstarts
 
-### Customer Support Agent
-
-A customer support agent powered by Claude. This project demonstrates how to leverage Claude's natural language understanding and generation capabilities to create an AI-assisted customer support system with access to a knowledge base.
-
-[Go to Customer Support Agent Quickstart](./customer-support-agent)
-
-### Financial Data Analyst
-
-A financial data analyst powered by Claude. This project demonstrates how to leverage Claude's capabilities with interactive data visualization to analyze financial data via chat.
-
-[Go to Financial Data Analyst Quickstart](./financial-data-analyst)
-
 ### Computer Use Demo
 
 An environment and tools that Claude can use to control a desktop computer. This project demonstrates how to leverage the computer use capabilities of the new Claude 3.5 Sonnet model.
