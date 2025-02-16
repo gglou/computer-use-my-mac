@@ -3,9 +3,6 @@
 
 ## Quickstart
 - [ ] Computer Use Demo
-- [ ] Customer Support Agent
-- [ ] Financial Data Analyst
-- [ ] N/A
 
 ## Type of Change
 - [ ] Bug fix
